@@ -1,17 +1,16 @@
 package com.example.student_management.service;
 
-import java.util.DuplicateFormatFlagsException;
 import java.util.List;
-import java.util.Optional;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.student_management.dto.CreateStudentRequest;
 import com.example.student_management.dto.UpdateStudentRequest;
 import com.example.student_management.entity.Student;
+import com.example.student_management.exception.DuplicateStudentException;
+import com.example.student_management.exception.StudentNotFoundException;
 import com.example.student_management.repository.StudentRepository;
-
-import jakarta.transaction.Transactional;
 
 @Service
 public class StudentService {
@@ -22,7 +21,12 @@ public class StudentService {
         this.repository = repository;
     }
 
+    @Transactional
     public Student create(CreateStudentRequest request) {
+        if (repository.existsByEmail(request.email())) {
+            throw new DuplicateStudentException("Email already exists: " + request.email());
+        }
+
         Student student = new Student(
             request.name(),
             request.email(),
@@ -31,38 +35,43 @@ public class StudentService {
             request.phone()
         );
 
-        return this.repository.save(student);
+        return repository.save(student);
     }
 
+    @Transactional(readOnly = true)
     public List<Student> getAll() {
-        return this.repository.findAll();
+        return repository.findAll();
     }
 
+    @Transactional(readOnly = true)
     public Student getById(Long id) {
-        return this.repository.findById(id)
-                              .orElseThrow(() -> new RuntimeException("Student not found"));
+        return repository.findById(id)
+                .orElseThrow(() -> new StudentNotFoundException("Student not found with id: " + id));
     }
 
     @Transactional
-    public Optional<Student> update(Long id, UpdateStudentRequest request) {
-        return this.repository.findById(id).map(student -> {
+    public Student update(Long id, UpdateStudentRequest request) {
+        Student student = getById(id);
 
-            if (request.email() != null
-                    && repository.existsByEmailAndIdNot(request.email(), id)) {
-                throw new DuplicateFormatFlagsException(request.email());
-            }
+        if (request.email() != null
+                && repository.existsByEmailAndIdNot(request.email(), id)) {
+            throw new DuplicateStudentException("Email already exists: " + request.email());
+        }
 
-            if (request.name() != null) student.setName(request.name());
-            if (request.email() != null) student.setEmail(request.email());
-            if (request.age() != null) student.setAge(request.age());
-            if (request.address() != null) student.setAddress(request.address());
-            if (request.phone() != null) student.setPhone(request.phone());
+        if (request.name() != null) student.setName(request.name());
+        if (request.email() != null) student.setEmail(request.email());
+        if (request.age() != null) student.setAge(request.age());
+        if (request.address() != null) student.setAddress(request.address());
+        if (request.phone() != null) student.setPhone(request.phone());
 
-            return this.repository.save(student);
-        });
+        return student;
     }
 
+    @Transactional
     public void delete(Long id) {
-        this.repository.deleteById(id);
+        if (!repository.existsById(id)) {
+            throw new StudentNotFoundException("Student not found with id: " + id);
+        }
+        repository.deleteById(id);
     }
 }
